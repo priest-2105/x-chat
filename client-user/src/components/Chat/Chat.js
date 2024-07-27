@@ -19,7 +19,8 @@ const Chat = ({ location }) => {
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([]);
 
-  const ENDPOINT = "localhost:8000";
+  // const ENDPOINT = "localhost:8000";
+  const ENDPOINT = "https://x-chat-server.onrender.com";
 
   useEffect(() => {
     const { name, room } = queryString.parse(location.search);
