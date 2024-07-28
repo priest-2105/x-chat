@@ -1,60 +1,55 @@
-const express = require('express');
-const socketio = require('socket.io');
-const http = require('http');
-
-const {addUser, removeUser, getUser, getUsersOfRoom} = require('./users')
-
-const PORT = process.env.PORT || 8000;
-
-const router = require('./router');
-
+const express = require("express");
+const cors = require("cors");
+const mongoose = require("mongoose");
+const authRoutes = require("./routes/auth");
+const messageRoutes = require("./routes/messages");
 const app = express();
-const server = http.createServer(app);
-const io = socketio(server);
-const cors = require('cors');
+const socket = require("socket.io");
+require("dotenv").config();
 
-io.on('connection', (socket)=>{
-  socket.on('join',({name, room},callback)=>{
-    const {error, user} = addUser({id:socket.id, name, room});
-
-    if(error)
-      return callback(error);
-
-    socket.join(user.room);
-
-    //admin generated messages are called 'message'
-    //welcome message for user
-    socket.emit('message',{user:"admin",text:`${user.name}, welcome to the room ${user.room}`})
-
-    //message to all the users of that room except the newly joined user
-    socket.broadcast.to(user.room).emit('message',{user:'admin',text:`${user.name} has joined`});
-
-
-    io.to(user.room).emit('roomData',{room:user.room, users:getUsersOfRoom(user.room)})
-
-    callback();
-  })
-
-  //user generated message are called 'sendMessage'
-  socket.on('sendMessage',(message, callback) => {
-    const user = getUser(socket.id);
-    io.to(user.room).emit('message',{user:user.name, text:message});
-    io.to(user.room).emit('roomData',{room:user.room, users:getUsersOfRoom(user.room)});
-
-    callback();
-  })
-
-  socket.on('disconnect',()=>{
-    const user = removeUser(socket.id);
-    if(user){
-      io.to(user.room).emit('message',{user:'admin',text:`${user.name} has left.`})
-    }
-  })
-})
-
-app.use(router);
 app.use(cors());
+app.use(express.json());
 
-server.listen(PORT, ()=>{
-  console.log(`Server Started on PORT ${PORT}`)
-})
+mongoose
+  .connect(process.env.MONGO_URL, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  })
+  .then(() => {
+    console.log("DB Connetion Successfull");
+  })
+  .catch((err) => {
+    console.log(err.message);
+  });
+
+app.get("/ping", (_req, res) => {
+  return res.json({ msg: "Ping Successful" });
+});
+
+app.use("/api/auth", authRoutes);
+app.use("/api/messages", messageRoutes);
+
+const server = app.listen(process.env.PORT, () =>
+  console.log(`Server started on ${process.env.PORT}`)
+);
+const io = socket(server, {
+  cors: {
+    origin: "http://localhost:3000",
+    credentials: true,
+  },
+});
+
+global.onlineUsers = new Map();
+io.on("connection", (socket) => {
+  global.chatSocket = socket;
+  socket.on("add-user", (userId) => {
+    onlineUsers.set(userId, socket.id);
+  });
+
+  socket.on("send-msg", (data) => {
+    const sendUserSocket = onlineUsers.get(data.to);
+    if (sendUserSocket) {
+      socket.to(sendUserSocket).emit("msg-recieve", data.msg);
+    }
+  });
+});
